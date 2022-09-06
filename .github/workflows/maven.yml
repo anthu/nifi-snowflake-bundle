@@ -24,3 +24,24 @@ jobs:
           cache: 'maven'
       - name: 🧪 Test with Maven
         run: mvn test
+      - name: 📦 Create NAR with Maven
+        if: startsWith(github.ref, 'refs/tags/')
+        run: mvn install
+      - name: ☁️ Upload NAR for release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v3
+        with:
+          name: nifi-snowflake-bundle-nar
+          path: nifi-snowflake-nar/target/*.nar
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: ☁️ Download NAR
+        uses: actions/download-artifact@v3
+        with:
+          name: nifi-snowflake-bundle-nar
+      - name: 🚀 Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: '**/*.nar'
