@@ -1,6 +1,5 @@
 package dev.anthu.controllers.snowflake;
 
-import dev.anthu.processors.snowflake.SnowflakeDefaultProperties;
 import net.snowflake.ingest.streaming.OpenChannelRequest;
 import net.snowflake.ingest.streaming.SnowflakeStreamingIngestChannel;
 import net.snowflake.ingest.streaming.SnowflakeStreamingIngestClient;
