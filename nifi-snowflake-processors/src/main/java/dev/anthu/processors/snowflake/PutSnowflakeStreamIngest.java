@@ -16,11 +16,10 @@
  */
 package dev.anthu.processors.snowflake;
 
+import dev.anthu.controllers.snowflake.SnowflakeIngestController;
 import net.snowflake.ingest.streaming.InsertValidationResponse;
-import net.snowflake.ingest.streaming.OpenChannelRequest;
 import net.snowflake.ingest.streaming.SnowflakeStreamingIngestChannel;
-import net.snowflake.ingest.streaming.SnowflakeStreamingIngestClient;
-import net.snowflake.ingest.streaming.SnowflakeStreamingIngestClientFactory;
+import net.snowflake.ingest.utils.SFException;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.flowfile.FlowFile;
@@ -51,15 +50,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
 
 @Tags({"snowflake", "stream"})
 @CapabilityDescription("Write Record Wise to Snowflake stream")
 @ReadsAttributes({@ReadsAttribute(attribute="")})
 @WritesAttributes({@WritesAttribute(attribute="")})
-public class StreamToSnowflakeTable extends AbstractProcessor {
+public class PutSnowflakeStreamIngest extends AbstractProcessor {
 
     static final PropertyDescriptor RECORD_READER = new PropertyDescriptor.Builder()
             .name("record-reader")
@@ -69,17 +66,23 @@ public class StreamToSnowflakeTable extends AbstractProcessor {
             .required(true)
             .build();
 
-    public static final PropertyDescriptor INSERT_STRATEGY = new PropertyDescriptor.Builder()
-            .name("Insert Strategy")
-            .description("Insert strategy for streaming ingest. Either flush row by row or a FlowFile as whole")
+    public static final PropertyDescriptor SNOWFLAKE_SERVICE = new PropertyDescriptor
+            .Builder().name("Snowflake Connection Service")
+            .description("Provides connection to Snowflake REST API")
             .required(true)
-            .allowableValues("row-by-row", "per FlowFile")
-            .defaultValue("row-by-row")
+            .identifiesControllerService(SnowflakeIngestController.class)
+            .build();
+
+    public static final PropertyDescriptor SNOWFLAKE_STREAMING_CHANNEL = new PropertyDescriptor.Builder()
+            .name("Snowflake Channel Name")
+            .description("Channel Name")
+            .required(true)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .defaultValue("channel1")
             .build();
 
     public static final Relationship REL_SUCCESS = new Relationship.Builder()
-            .name("sucess")
+            .name("success")
             .description("A Flowfile is routed to this relationship when everything goes well here")
             .build();
 
@@ -88,9 +91,6 @@ public class StreamToSnowflakeTable extends AbstractProcessor {
             .description("A Flowfile is routed to this relationship it can not be parsed or a problem happens")
             .build();
 
-    private SnowflakeStreamingIngestChannel channel1;
-    private boolean rowByRowInsertStrategy;
-
     @Override
     protected void init(final ProcessorInitializationContext context) {
 
@@ -98,43 +98,17 @@ public class StreamToSnowflakeTable extends AbstractProcessor {
 
     @OnScheduled
     public void onScheduled(final ProcessContext context) {
-
-        rowByRowInsertStrategy = context.getProperty(INSERT_STRATEGY).getValue().equals("row-by-row");
-
-        Properties props = new Properties();
-        props.setProperty("url", context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_URL).getValue());
-        props.setProperty("user", context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_USER).getValue());
-        props.setProperty("private_key", context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_PRIVATE_KEY).getValue());
-        if(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_ROLE).isSet()) {
-           props.setProperty("role", context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_ROLE).getValue());
-        }
-
-        SnowflakeStreamingIngestClient client = SnowflakeStreamingIngestClientFactory
-                .builder("NIFI")
-                .setProperties(props)
-                .build();
-
-        OpenChannelRequest channelRequest = OpenChannelRequest.builder(UUID.randomUUID().toString())
-                .setDBName(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_DATABASE).getValue())
-                .setSchemaName(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA).getValue())
-                .setTableName(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_TABLE).getValue())
-                .setOnErrorOption(OpenChannelRequest.OnErrorOption.CONTINUE)
-                .build();
-
-        channel1 = client.openChannel(channelRequest);
     }
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         final List<PropertyDescriptor> properties = new ArrayList<>();
         properties.add(RECORD_READER);
-        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_URL);
-        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_USER);
-        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_PRIVATE_KEY);
-        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_ROLE);
+        properties.add(SNOWFLAKE_SERVICE);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_DATABASE);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_TABLE);
+        properties.add(SNOWFLAKE_STREAMING_CHANNEL);
         return properties;
     }
 
@@ -155,38 +129,42 @@ public class StreamToSnowflakeTable extends AbstractProcessor {
         final RecordReaderFactory readerFactory = context.getProperty(RECORD_READER).asControllerService(RecordReaderFactory.class);
 
         final Map<String, String> originalAttributes = flowFile.getAttributes();
-        Record record;
-        List<Map<String, Object>> rows = new ArrayList<>();
+        final SnowflakeIngestController snowflakeController = context.getProperty(SNOWFLAKE_SERVICE).asControllerService(SnowflakeIngestController.class);
+        final String database = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_DATABASE).getValue();
+        final String schema = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA).getValue();
+        final String table = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_TABLE).getValue();
+        final String channelName = context.getProperty(SNOWFLAKE_STREAMING_CHANNEL).getValue();
 
         try (   final InputStream in = session.read(flowFile);
                 final RecordReader reader = readerFactory.createRecordReader(originalAttributes, in, flowFile.getSize(), getLogger())
         ) {
-             final RecordSchema recordSchema = reader.getSchema();
-             while ((record = reader.nextRecord()) != null) {
-                 Map<String, Object> row = new HashMap<>();
-                 for (RecordField field : recordSchema.getFields()) {
-                     Object recordValue = record.getValue(field.getFieldName());
-                     row.put(field.getFieldName(), recordValue);
-                     getLogger().info("Adding {} as {}", field.getFieldName(), recordValue);
-                 }
+            SnowflakeStreamingIngestChannel channel1 = snowflakeController.getChannel(database, schema, table, channelName);
 
-                 if (rowByRowInsertStrategy) {
-                     InsertValidationResponse response = channel1.insertRow(row, null);
-                     if (response.hasErrors()) {
-                         throw (response.getInsertErrors().get(0)).getException();
-                     }
-                 } else {
-                     rows.add(row);
-                 }
-             }
-            if(!rowByRowInsertStrategy) {
-                InsertValidationResponse response = channel1.insertRows(rows, null);
+            final RecordSchema recordSchema = reader.getSchema();
+            Record record;
+            while ((record = reader.nextRecord()) != null) {
+                Map<String, Object> row = new HashMap<>();
+                for (RecordField field : recordSchema.getFields()) {
+                    Object recordValue = record.getValue(field.getFieldName());
+                    row.put(field.getFieldName(), recordValue);
+                    getLogger().debug("Adding {} as {}", field.getFieldName(), recordValue);
+                }
+
+                InsertValidationResponse response = channel1.insertRow(row, null);
                 if (response.hasErrors()) {
                     throw (response.getInsertErrors().get(0)).getException();
                 }
             }
-        } catch (SchemaNotFoundException | IOException | MalformedRecordException e) {
+        } catch (SchemaNotFoundException e) {
             getLogger().error("Failed to deserialize {}", flowFile, e);
+            session.transfer(flowFile, REL_FAILURE);
+            return;
+        } catch (SFException e) {
+            getLogger().error("Failed to insert Row.", e);
+            session.transfer(flowFile, REL_FAILURE);
+            return;
+        } catch (IOException | MalformedRecordException e) {
+            getLogger().error("Failed write record {}", flowFile, e);
             session.transfer(flowFile, REL_FAILURE);
             return;
         }

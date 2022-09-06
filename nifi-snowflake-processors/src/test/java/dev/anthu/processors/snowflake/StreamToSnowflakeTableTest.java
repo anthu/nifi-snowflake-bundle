@@ -28,7 +28,7 @@ public class StreamToSnowflakeTableTest {
 
     @BeforeEach
     public void init() {
-        testRunner = TestRunners.newTestRunner(StreamToSnowflakeTable.class);
+        testRunner = TestRunners.newTestRunner(PutSnowflakeStreamIngest.class);
     }
 
     @Test
