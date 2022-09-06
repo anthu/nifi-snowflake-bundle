@@ -22,7 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 
-public class MyProcessorTest {
+public class StreamToSnowflakeTableTest {
 
     private TestRunner testRunner;
 
