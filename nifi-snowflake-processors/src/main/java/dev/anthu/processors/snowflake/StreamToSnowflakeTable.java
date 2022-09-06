@@ -59,7 +59,7 @@ import java.util.UUID;
 @CapabilityDescription("Write Record Wise to Snowflake stream")
 @ReadsAttributes({@ReadsAttribute(attribute="")})
 @WritesAttributes({@WritesAttribute(attribute="")})
-public class WriteToSnowflakeChannel extends AbstractProcessor {
+public class StreamToSnowflakeTable extends AbstractProcessor {
 
     static final PropertyDescriptor RECORD_READER = new PropertyDescriptor.Builder()
             .name("record-reader")

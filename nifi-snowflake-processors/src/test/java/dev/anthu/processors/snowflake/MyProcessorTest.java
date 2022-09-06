@@ -28,7 +28,7 @@ public class MyProcessorTest {
 
     @BeforeEach
     public void init() {
-        testRunner = TestRunners.newTestRunner(WriteToSnowflakeChannel.class);
+        testRunner = TestRunners.newTestRunner(StreamToSnowflakeTable.class);
     }
 
     @Test
