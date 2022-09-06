@@ -25,8 +25,7 @@ jobs:
       - name: 🧪 Test with Maven
         run: mvn test
       - name: 📦 Create NAR with Maven
-        if: startsWith(github.ref, 'refs/tags/')
-        run: mvn install
+        run: mvn -DskipTests=true install
       - name: ☁️ Upload NAR for release
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v3
