@@ -13,3 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 dev.anthu.processors.snowflake.PutSnowflakeStreamIngest
+dev.anthu.processors.snowflake.PutSnowflakeStreamIngestAsVariant

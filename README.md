@@ -15,6 +15,28 @@ The table needs to be prepared in Snowflake and match the schema of the FlowFile
 | Snowflake Schema             | true     | Existing Schema to ingest records                                                     | `PUBLIC`                         |
 | Snowflake Table              | true     | Existing Table with matching FlowFile Schema acting as a record sink                  | `STREAM_INGEST_SINK`             |
 | Snowflake Channel Name       | true     | Channel Name for ingestion                                                            | `mychannel42`                    |
+
+#### Relationships
+| Name    | Description                      |
+|---------|----------------------------------|
+| success | Successfully processed FlowFiles |
+| failure | Failed FlowFiles                 |
+
+### PutSnowflakeStreamIngestAsVariant
+This processor takes a structured Flow File and ingests it to a Snowflake column as Variant.
+The table needs to be prepared in Snowflake. Please mind the limits of a Variant field for Snowflake
+#### Configuration
+
+| Name                         | Required | Description                                                                           | Example                          |
+|------------------------------|----------|---------------------------------------------------------------------------------------|----------------------------------|
+| Record Reader                | true     | Instance of a Record Reader for FlowFile parsing and schema extraction                | CSVReader                        |
+| Snowflake Connection Service | true     | Instance of Snowflake Ingest Controller Service which connects to a Snowflake account | SnowflakeIngestControllerService |
+| Snowflake Database           | true     | Existing Database to ingest records to                                                | `PLAYGROUND_DB`                  |
+| Snowflake Schema             | true     | Existing Schema to ingest records                                                     | `PUBLIC`                         |
+| Snowflake Table              | true     | Existing Table with matching FlowFile Schema acting as a record sink                  | `STREAM_INGEST_SINK`             |
+| Snowflake Channel Name       | true     | Channel Name for ingestion                                                            | `mychannel42`                    |
+| Snowflake Target Column      | true     | Target column for the record data                                                     | `column1`                        |
+
 #### Relationships
 | Name    | Description                      |
 |---------|----------------------------------|
