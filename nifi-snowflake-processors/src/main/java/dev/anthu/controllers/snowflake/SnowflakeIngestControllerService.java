@@ -26,6 +26,7 @@ public class SnowflakeIngestControllerService extends AbstractControllerService 
             .sensitive(false)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
+
     static final PropertyDescriptor SNOWFLAKE_USER = new PropertyDescriptor.Builder()
             .name("snowflake-user")
             .displayName("Snowflake User")
@@ -33,6 +34,7 @@ public class SnowflakeIngestControllerService extends AbstractControllerService 
             .sensitive(false)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
+
     static final PropertyDescriptor SNOWFLAKE_PRIVATE_KEY = new PropertyDescriptor.Builder()
             .name("snowflake-private-key")
             .displayName("Snowflake private key")
@@ -40,6 +42,7 @@ public class SnowflakeIngestControllerService extends AbstractControllerService 
             .sensitive(true)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
+
     static final PropertyDescriptor SNOWFLAKE_ROLE = new PropertyDescriptor.Builder()
             .name("snowflake-role")
             .displayName("Snowflake role")
@@ -96,5 +99,10 @@ public class SnowflakeIngestControllerService extends AbstractControllerService 
                 .builder("NIFI")
                 .setProperties(props)
                 .build();
+    }
+
+    public void closeChannel(String database, String schema, String table, String channelName) {
+        SnowflakeStreamingIngestChannel currentChannel = channelMap.remove(database + "." + schema + "." + table + ":" + channelName);
+        currentChannel.close();
     }
 }

@@ -27,7 +27,7 @@
 
     <groupId>dev.anthu</groupId>
     <artifactId>nifi-snowflake-bundle</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.4</version>
     <packaging>pom</packaging>
 
     <modules>

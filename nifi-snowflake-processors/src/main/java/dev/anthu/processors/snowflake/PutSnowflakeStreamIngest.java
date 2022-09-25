@@ -20,19 +20,21 @@ import dev.anthu.controllers.snowflake.SnowflakeIngestController;
 import net.snowflake.ingest.streaming.InsertValidationResponse;
 import net.snowflake.ingest.streaming.SnowflakeStreamingIngestChannel;
 import net.snowflake.ingest.utils.SFException;
-import org.apache.nifi.annotation.lifecycle.OnScheduled;
-import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.annotation.behavior.ReadsAttribute;
 import org.apache.nifi.annotation.behavior.ReadsAttributes;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
+import org.apache.nifi.annotation.lifecycle.OnEnabled;
+import org.apache.nifi.annotation.lifecycle.OnScheduled;
+import org.apache.nifi.annotation.lifecycle.OnShutdown;
+import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.controller.ConfigurationContext;
+import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.schema.access.SchemaNotFoundException;
@@ -54,61 +56,48 @@ import java.util.Set;
 
 @Tags({"snowflake", "stream"})
 @CapabilityDescription("Write Record Wise to Snowflake stream")
-@ReadsAttributes({@ReadsAttribute(attribute="")})
-@WritesAttributes({@WritesAttribute(attribute="")})
+@ReadsAttributes({@ReadsAttribute(attribute = "")})
+@WritesAttributes({@WritesAttribute(attribute = "")})
 public class PutSnowflakeStreamIngest extends AbstractProcessor {
-
-    static final PropertyDescriptor RECORD_READER = new PropertyDescriptor.Builder()
-            .name("record-reader")
-            .displayName("Record Reader")
-            .description("Specifies the Controller Service to use for reading incoming data")
-            .identifiesControllerService(RecordReaderFactory.class)
-            .required(true)
-            .build();
-
-    public static final PropertyDescriptor SNOWFLAKE_SERVICE = new PropertyDescriptor
-            .Builder().name("Snowflake Connection Service")
-            .description("Provides connection to Snowflake REST API")
-            .required(true)
-            .identifiesControllerService(SnowflakeIngestController.class)
-            .build();
-
-    public static final PropertyDescriptor SNOWFLAKE_STREAMING_CHANNEL = new PropertyDescriptor.Builder()
-            .name("Snowflake Channel Name")
-            .description("Channel Name")
-            .required(true)
-            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .defaultValue("channel1")
-            .build();
 
     public static final Relationship REL_SUCCESS = new Relationship.Builder()
             .name("success")
-            .description("A Flowfile is routed to this relationship when everything goes well here")
+            .description("A FlowFile is routed to this relationship when everything goes well here")
             .build();
 
     public static final Relationship REL_FAILURE = new Relationship.Builder()
             .name("failure")
-            .description("A Flowfile is routed to this relationship it can not be parsed or a problem happens")
+            .description("A FlowFile is routed to this relationship it can not be parsed or a problem happens")
             .build();
 
-    @Override
-    protected void init(final ProcessorInitializationContext context) {
+    private RecordReaderFactory readerFactory;
+    private SnowflakeIngestController snowflakeController;
 
-    }
+    private String database;
+    private String schema;
+    private String table;
+    private String channelName;
 
     @OnScheduled
     public void onScheduled(final ProcessContext context) {
+        snowflakeController = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_SERVICE).asControllerService(SnowflakeIngestController.class);
+        readerFactory = context.getProperty(SnowflakeDefaultProperties.RECORD_READER).asControllerService(RecordReaderFactory.class);
+        database = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_DATABASE).getValue();
+        schema = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA).getValue();
+        table = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_TABLE).getValue();
+        channelName = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_STREAMING_CHANNEL).getValue();
+        getLogger().info("Initialized");
     }
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         final List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(RECORD_READER);
-        properties.add(SNOWFLAKE_SERVICE);
+        properties.add(SnowflakeDefaultProperties.RECORD_READER);
+        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_SERVICE);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_DATABASE);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_TABLE);
-        properties.add(SNOWFLAKE_STREAMING_CHANNEL);
+        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_STREAMING_CHANNEL);
         return properties;
     }
 
@@ -126,17 +115,11 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
         if (flowFile == null) {
             return;
         }
-        final RecordReaderFactory readerFactory = context.getProperty(RECORD_READER).asControllerService(RecordReaderFactory.class);
 
         final Map<String, String> originalAttributes = flowFile.getAttributes();
-        final SnowflakeIngestController snowflakeController = context.getProperty(SNOWFLAKE_SERVICE).asControllerService(SnowflakeIngestController.class);
-        final String database = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_DATABASE).getValue();
-        final String schema = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA).getValue();
-        final String table = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_TABLE).getValue();
-        final String channelName = context.getProperty(SNOWFLAKE_STREAMING_CHANNEL).getValue();
 
-        try (   final InputStream in = session.read(flowFile);
-                final RecordReader reader = readerFactory.createRecordReader(originalAttributes, in, flowFile.getSize(), getLogger())
+        try (final InputStream in = session.read(flowFile);
+             final RecordReader reader = readerFactory.createRecordReader(originalAttributes, in, flowFile.getSize(), getLogger())
         ) {
             SnowflakeStreamingIngestChannel channel1 = snowflakeController.getChannel(database, schema, table, channelName);
 
@@ -147,7 +130,7 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
                 for (RecordField field : recordSchema.getFields()) {
                     Object recordValue = record.getValue(field.getFieldName());
                     row.put(field.getFieldName(), recordValue);
-                    getLogger().debug("Adding {} as {}", field.getFieldName(), recordValue);
+                    getLogger().info("Adding {} as {}", field.getFieldName(), recordValue);
                 }
 
                 InsertValidationResponse response = channel1.insertRow(row, null);
@@ -155,6 +138,7 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
                     throw (response.getInsertErrors().get(0)).getException();
                 }
             }
+            getLogger().info("All records done.");
         } catch (SchemaNotFoundException e) {
             getLogger().error("Failed to deserialize {}", flowFile, e);
             session.transfer(flowFile, REL_FAILURE);
@@ -170,5 +154,10 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
         }
 
         session.transfer(flowFile, REL_SUCCESS);
+    }
+
+    @OnShutdown
+    public void cleanup() {
+        snowflakeController.closeChannel(database, schema, table, channelName);
     }
 }
