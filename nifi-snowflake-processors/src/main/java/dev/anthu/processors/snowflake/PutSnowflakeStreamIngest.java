@@ -16,6 +16,7 @@
  */
 package dev.anthu.processors.snowflake;
 
+import java.sql.Date;
 import dev.anthu.controllers.snowflake.SnowflakeIngestController;
 import net.snowflake.ingest.streaming.InsertValidationResponse;
 import net.snowflake.ingest.streaming.SnowflakeStreamingIngestChannel;
@@ -26,17 +27,14 @@ import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
-import org.apache.nifi.annotation.lifecycle.OnEnabled;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnShutdown;
 import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
-import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.schema.access.SchemaNotFoundException;
 import org.apache.nifi.serialization.MalformedRecordException;
 import org.apache.nifi.serialization.RecordReader;
@@ -128,9 +126,20 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
             while ((record = reader.nextRecord()) != null) {
                 Map<String, Object> row = new HashMap<>();
                 for (RecordField field : recordSchema.getFields()) {
-                    Object recordValue = record.getValue(field.getFieldName());
-                    row.put(field.getFieldName(), recordValue);
-                    getLogger().info("Adding {} as {}", field.getFieldName(), recordValue);
+                    String fieldName = field.getFieldName();
+                    Object recordValue = record.getValue(fieldName);
+
+                    // Stream Ingest rejects Date records -> casting to LocalDate
+                    if (recordValue instanceof Date) {
+                        recordValue = ((Date)recordValue).toLocalDate();
+                    }
+
+                    // Fix for optionally Quoted fields
+                    if (fieldName.equals(fieldName.toUpperCase())) {
+                        row.put(fieldName, recordValue);
+                    } else {
+                        row.put('"' + fieldName + '"', recordValue);
+                    }
                 }
 
                 InsertValidationResponse response = channel1.insertRow(row, null);
