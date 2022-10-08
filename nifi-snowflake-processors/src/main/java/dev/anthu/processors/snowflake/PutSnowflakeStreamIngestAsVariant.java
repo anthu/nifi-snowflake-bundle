@@ -143,8 +143,8 @@ public class PutSnowflakeStreamIngestAsVariant extends AbstractProcessor {
             while ((record = reader.nextRecord()) != null) {
                 ObjectNode variantObject = mapper.createObjectNode();
                 for (RecordField field : recordSchema.getFields()) {
-                    Object recordValue = record.getValue(field.getFieldName());
-                    variantObject.put(field.getFieldName(), recordValue.toString());
+                    String recordValue = record.getAsString(field.getFieldName());
+                    variantObject.put(field.getFieldName(), recordValue);
                     getLogger().debug("Adding {} as {}", field.getFieldName(), recordValue);
                 }
 
