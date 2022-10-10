@@ -45,6 +45,8 @@ import org.apache.nifi.serialization.record.RecordSchema;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -75,6 +77,8 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
     private String schema;
     private String table;
     private String channelName;
+    private boolean writeTimestamp;
+    private String timestampTargetColumn;
 
     @OnScheduled
     public void onScheduled(final ProcessContext context) {
@@ -84,7 +88,9 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
         schema = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA).getValue();
         table = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_TABLE).getValue();
         channelName = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_STREAMING_CHANNEL).getValue();
-        getLogger().info("Initialized");
+        writeTimestamp = Boolean.parseBoolean(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_ADD_INGESTION_TIMESTAMP).getValue());
+        // Quote column if not all-uppercase
+        timestampTargetColumn = optionallyQuoteColumnName(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_INGESTION_TIMESTAMP_COLUMN).getValue());
     }
 
     @Override
@@ -96,6 +102,8 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_SCHEMA);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_TABLE);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_STREAMING_CHANNEL);
+        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_ADD_INGESTION_TIMESTAMP);
+        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_INGESTION_TIMESTAMP_COLUMN);
         return properties;
     }
 
@@ -134,12 +142,11 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
                         recordValue = ((Date)recordValue).toLocalDate();
                     }
 
-                    // Fix for optionally Quoted fields
-                    if (fieldName.equals(fieldName.toUpperCase())) {
-                        row.put(fieldName, recordValue);
-                    } else {
-                        row.put('"' + fieldName + '"', recordValue);
-                    }
+                    row.put(optionallyQuoteColumnName(fieldName), recordValue);
+                }
+
+                if(writeTimestamp) {
+                    row.put(timestampTargetColumn, LocalDateTime.now(ZoneOffset.UTC));
                 }
 
                 InsertValidationResponse response = channel1.insertRow(row, null);
@@ -163,6 +170,13 @@ public class PutSnowflakeStreamIngest extends AbstractProcessor {
         }
 
         session.transfer(flowFile, REL_SUCCESS);
+    }
+
+    private static String optionallyQuoteColumnName(String columnName) {
+        if (columnName.equals(columnName.toUpperCase())) {
+            return columnName;
+        }
+        return '"' + columnName + '"';
     }
 
     @OnShutdown

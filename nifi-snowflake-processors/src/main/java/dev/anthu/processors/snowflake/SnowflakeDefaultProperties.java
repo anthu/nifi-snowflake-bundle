@@ -50,4 +50,24 @@ public class SnowflakeDefaultProperties {
             .required(true)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
+
+    static final PropertyDescriptor SNOWFLAKE_ADD_INGESTION_TIMESTAMP = new PropertyDescriptor.Builder()
+            .name("snowflake-add-ingestion-timestamp")
+            .displayName("Add ingestion timestamp")
+            .description("Should write the ingestion timestamp to a target column. In case of Variant target the timestamp will be written to a dedicated column.")
+            .required(true)
+            .allowableValues("true", "false")
+            .defaultValue("false")
+            .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
+            .build();
+
+    static final PropertyDescriptor SNOWFLAKE_INGESTION_TIMESTAMP_COLUMN = new PropertyDescriptor.Builder()
+            .name("snowflake-ingestion-timestamp-column")
+            .displayName("Ingestion Timestamp Column Name")
+            .description("Target column for the timestamp. This value has no effect if the \"Add ingestion timestamp\" property is disabled. This value is case-sensitive and will override any overlapping column name within the data.")
+            .dependsOn(SNOWFLAKE_ADD_INGESTION_TIMESTAMP, "true")
+            .required(true)
+            .defaultValue("INGESTED_AT")
+            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .build();
 }

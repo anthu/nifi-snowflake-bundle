@@ -28,7 +28,6 @@ import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
-import org.apache.nifi.annotation.lifecycle.OnDisabled;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnShutdown;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -48,6 +47,8 @@ import org.apache.nifi.serialization.record.RecordSchema;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -89,6 +90,8 @@ public class PutSnowflakeStreamIngestAsVariant extends AbstractProcessor {
     private String table;
     private String channelName;
     private String targetColumn;
+    private boolean writeTimestamp;
+    private String timestampTargetColumn;
 
     @OnScheduled
     public void onScheduled(final ProcessContext context) {
@@ -99,6 +102,8 @@ public class PutSnowflakeStreamIngestAsVariant extends AbstractProcessor {
         table = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_TABLE).getValue();
         channelName = context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_STREAMING_CHANNEL).getValue();
         targetColumn = context.getProperty(SNOWFLAKE_TARGET_COLUMN).getValue();
+        writeTimestamp = Boolean.parseBoolean(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_ADD_INGESTION_TIMESTAMP).getValue());
+        timestampTargetColumn = optionallyQuoteColumnName(context.getProperty(SnowflakeDefaultProperties.SNOWFLAKE_INGESTION_TIMESTAMP_COLUMN).getValue());
     }
 
     @Override
@@ -111,6 +116,8 @@ public class PutSnowflakeStreamIngestAsVariant extends AbstractProcessor {
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_TABLE);
         properties.add(SnowflakeDefaultProperties.SNOWFLAKE_STREAMING_CHANNEL);
         properties.add(SNOWFLAKE_TARGET_COLUMN);
+        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_ADD_INGESTION_TIMESTAMP);
+        properties.add(SnowflakeDefaultProperties.SNOWFLAKE_INGESTION_TIMESTAMP_COLUMN);
         return properties;
     }
 
@@ -151,6 +158,11 @@ public class PutSnowflakeStreamIngestAsVariant extends AbstractProcessor {
                 Map<String, Object> row = new HashMap<>();
                 String res = mapper.writer().writeValueAsString(variantObject);
                 row.put(targetColumn, res);
+
+                if(writeTimestamp) {
+                    row.put(timestampTargetColumn, LocalDateTime.now(ZoneOffset.UTC));
+                }
+
                 InsertValidationResponse response = channel1.insertRow(row, null);
                 if (response.hasErrors()) {
                     throw (response.getInsertErrors().get(0)).getException();
@@ -173,8 +185,14 @@ public class PutSnowflakeStreamIngestAsVariant extends AbstractProcessor {
         session.transfer(flowFile, REL_SUCCESS);
     }
 
+    private static String optionallyQuoteColumnName(String columnName) {
+        if (columnName.equals(columnName.toUpperCase())) {
+            return columnName;
+        }
+        return '"' + columnName + '"';
+    }
+
     @OnShutdown
-    @OnDisabled
     public void cleanup() {
         snowflakeController.closeChannel(database, schema, table, channelName);
     }
