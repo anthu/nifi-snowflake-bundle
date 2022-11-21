@@ -16,8 +16,6 @@
  */
 package dev.anthu.processors.snowflake;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import dev.anthu.controllers.snowflake.SnowflakeIngestController;
 import net.snowflake.ingest.streaming.InsertValidationResponse;
 import net.snowflake.ingest.streaming.SnowflakeStreamingIngestChannel;
@@ -37,7 +35,6 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.util.StandardValidators;
-import org.apache.nifi.serialization.RecordReaderFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -80,7 +77,6 @@ public class PutSnowflakeStreamIngestAsRaw extends AbstractProcessor {
             .description("A FlowFile is routed to this relationship it can not be parsed or a problem happens")
             .build();
 
-    private RecordReaderFactory readerFactory;
     private SnowflakeIngestController snowflakeController;
 
     private String database;
@@ -132,8 +128,6 @@ public class PutSnowflakeStreamIngestAsRaw extends AbstractProcessor {
             return;
         }
 
-        final ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new Jdk8Module());
         try (final InputStream in = session.read(flowFile)) {
             SnowflakeStreamingIngestChannel channel1 = snowflakeController.getChannel(database, schema, table, channelName);
 
