@@ -14,3 +14,4 @@
 # limitations under the License.
 dev.anthu.processors.snowflake.PutSnowflakeStreamIngest
 dev.anthu.processors.snowflake.PutSnowflakeStreamIngestAsVariant
+dev.anthu.processors.snowflake.PutSnowflakeStreamIngestAsRaw
